@@ -1,0 +1,147 @@
+---
+# Checkpoint 3: Cleanup Existing Ray Installation
+# This playbook removes any existing Ray containers and configurations
+# APPROVAL REQUIRED: Yes (destructive operation)
+
+- name: "Checkpoint 3: Cleanup Existing Ray Installation"
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars:
+    checkpoint_name: "cleanup-existing"
+    approval_required: true
+    destructive_operation: true
+    
+  tasks:
+    - name: Display checkpoint information
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 3: CLEANUP EXISTING INSTALLATION ==="
+          - "Approval Required: {{ approval_required }}"
+          - "Destructive Operation: {{ destructive_operation }}"
+          - "Description: Remove existing Ray containers and configurations"
+
+    - name: Check if approval file exists
+      ansible.builtin.stat:
+        path: "/tmp/checkpoint-{{ checkpoint_name }}-approved"
+      register: approval_check
+      delegate_to: localhost
+      run_once: true
+
+    - name: Scan for existing Ray containers
+      ansible.builtin.shell: docker ps -a --filter "name=ray" --format "table {{.Names}}\t{{.Status}}"
+      register: existing_containers
+      changed_when: false
+      failed_when: false
+
+    - name: Scan for existing Ray processes
+      ansible.builtin.shell: ps aux | grep -E 'ray start|ray head|ray worker' | grep -v grep
+      register: existing_processes
+      changed_when: false
+      failed_when: false
+
+    - name: Require manual approval for cleanup
+      ansible.builtin.fail:
+        msg: |
+          ================================
+          APPROVAL REQUIRED FOR CHECKPOINT 3
+          ================================
+          
+          ⚠️  WARNING: DESTRUCTIVE OPERATION ⚠️
+          
+          This checkpoint will DESTROY existing Ray installations.
+          
+          Found existing Ray containers on {{ inventory_hostname }}:
+          {{ existing_containers.stdout if existing_containers.stdout else 'None found' }}
+          
+          Found existing Ray processes on {{ inventory_hostname }}:
+          {{ existing_processes.stdout if existing_processes.stdout else 'None found' }}
+          
+          To approve this checkpoint, run:
+          touch /tmp/checkpoint-{{ checkpoint_name }}-approved
+          
+          Then re-run this playbook.
+          
+          What this checkpoint will do:
+          1. Stop all Ray containers (ray_head, ray_worker)
+          2. Remove Ray containers
+          3. Kill any remaining Ray processes
+          4. Clean up Ray temporary directories
+          5. Remove Ray configuration files
+          
+          THIS ACTION CANNOT BE UNDONE!
+      when: 
+        - approval_required
+        - not approval_check.stat.exists
+      run_once: true
+
+    - name: Stop Ray containers
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: absent
+      ignore_errors: true
+      with_items:
+        - ray_head
+        - ray_worker
+
+    - name: Kill any remaining Ray processes
+      ansible.builtin.shell: |
+        pkill -f "ray start" || true
+        pkill -f "ray head" || true
+        pkill -f "ray worker" || true
+      changed_when: false
+
+    - name: Clean up Ray temporary directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "{{ ray_temp_dir }}"
+        - "/tmp/ray"
+        - "/home/{{ ansible_user }}/ray_results"
+
+    - name: Remove Ray start scripts
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "/usr/local/bin/start_ray_head.sh"
+        - "/usr/local/bin/start_ray_worker.sh"
+
+    - name: Verify cleanup completion
+      ansible.builtin.shell: docker ps -a --filter "name=ray" --format "{{.Names}}"
+      register: remaining_containers
+      changed_when: false
+
+    - name: Save checkpoint results
+      ansible.builtin.copy:
+        content: |
+          {
+            "checkpoint": "{{ checkpoint_name }}",
+            "timestamp": "{{ ansible_date_time.iso8601 }}",
+            "node": "{{ inventory_hostname }}",
+            "status": "PASSED",
+            "containers_before": "{{ existing_containers.stdout_lines | length }}",
+            "containers_after": "{{ remaining_containers.stdout_lines | length }}",
+            "cleanup_successful": {{ remaining_containers.stdout_lines | length == 0 }},
+            "approval_required": {{ approval_required }},
+            "destructive_operation": {{ destructive_operation }}
+          }
+        dest: "/tmp/checkpoint-{{ checkpoint_name }}-{{ inventory_hostname }}.json"
+      delegate_to: localhost
+
+- name: Generate Cleanup Report
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Remove approval file
+      ansible.builtin.file:
+        path: "/tmp/checkpoint-cleanup-existing-approved"
+        state: absent
+
+    - name: Display completion status
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 3 COMPLETED ==="
+          - "Existing Ray installations cleaned up successfully"
+          - "Ready to proceed to Checkpoint 4: Ray Cluster Deployment" 

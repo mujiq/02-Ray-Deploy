@@ -1,0 +1,117 @@
+---
+# Checkpoint 2: Docker Installation and Configuration
+# This playbook installs and configures Docker on all nodes
+# APPROVAL REQUIRED: Yes (system modification)
+
+- name: "Checkpoint 2: Docker Installation and Configuration"
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars:
+    checkpoint_name: "docker-installation"
+    approval_required: true
+    destructive_operation: false
+    
+  tasks:
+    - name: Display checkpoint information
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 2: DOCKER INSTALLATION ==="
+          - "Approval Required: {{ approval_required }}"
+          - "Destructive Operation: {{ destructive_operation }}"
+          - "Description: Install and configure Docker on all cluster nodes"
+
+    - name: Check if approval file exists
+      ansible.builtin.stat:
+        path: "/tmp/checkpoint-{{ checkpoint_name }}-approved"
+      register: approval_check
+      delegate_to: localhost
+      run_once: true
+
+    - name: Require manual approval for Docker installation
+      ansible.builtin.fail:
+        msg: |
+          ================================
+          APPROVAL REQUIRED FOR CHECKPOINT 2
+          ================================
+          
+          This checkpoint will install Docker on all nodes.
+          
+          To approve this checkpoint, run:
+          touch /tmp/checkpoint-{{ checkpoint_name }}-approved
+          
+          Then re-run this playbook.
+          
+          What this checkpoint will do:
+          1. Install Docker packages
+          2. Configure Docker daemon
+          3. Add users to docker group
+          4. Start Docker service
+          5. Pull Ray and monitoring container images
+          
+          Systems that will be affected:
+          {% for host in groups['ray_cluster'] %}
+          - {{ host }} ({{ hostvars[host]['ansible_host'] }})
+          {% endfor %}
+      when: 
+        - approval_required
+        - not approval_check.stat.exists
+      run_once: true
+
+    - name: Include Docker role
+      include_role:
+        name: docker
+
+    - name: Verify Docker installation
+      ansible.builtin.command: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Test Docker functionality
+      ansible.builtin.command: docker run --rm hello-world
+      register: docker_test
+      changed_when: false
+
+    - name: Pull required Docker images
+      community.docker.docker_image:
+        name: "{{ item }}"
+        pull: yes
+        source: pull
+      with_items:
+        - "{{ ray_docker_image }}"
+        - "{{ prometheus_image }}"
+        - "{{ grafana_image }}"
+        - "{{ node_exporter_image }}"
+        - "{{ cadvisor_image }}"
+
+    - name: Save checkpoint results
+      ansible.builtin.copy:
+        content: |
+          {
+            "checkpoint": "{{ checkpoint_name }}",
+            "timestamp": "{{ ansible_date_time.iso8601 }}",
+            "node": "{{ inventory_hostname }}",
+            "status": "PASSED",
+            "docker_version": "{{ docker_version.stdout }}",
+            "docker_test": "{{ 'PASSED' if docker_test.rc == 0 else 'FAILED' }}",
+            "approval_required": {{ approval_required }},
+            "destructive_operation": {{ destructive_operation }}
+          }
+        dest: "/tmp/checkpoint-{{ checkpoint_name }}-{{ inventory_hostname }}.json"
+      delegate_to: localhost
+
+- name: Generate Docker Installation Report
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Remove approval file
+      ansible.builtin.file:
+        path: "/tmp/checkpoint-docker-installation-approved"
+        state: absent
+
+    - name: Display completion status
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 2 COMPLETED ==="
+          - "Docker successfully installed and configured on all nodes"
+          - "Ready to proceed to Checkpoint 3: Ray Cluster Deployment" 

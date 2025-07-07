@@ -1,0 +1,153 @@
+---
+- name: Check if Docker is available via which command
+  ansible.builtin.command: which docker
+  register: docker_which_check
+  changed_when: false
+  failed_when: false
+
+- name: Check if Docker is installed via apt
+  ansible.builtin.command: dpkg -l docker-ce
+  register: docker_apt_check
+  changed_when: false
+  failed_when: false
+
+- name: Check if Docker is installed via snap
+  ansible.builtin.command: snap list docker
+  register: docker_snap_check
+  changed_when: false
+  failed_when: false
+
+- name: Set Docker installation status facts
+  ansible.builtin.set_fact:
+    docker_available: "{{ docker_which_check.rc == 0 }}"
+    docker_via_apt: "{{ docker_apt_check.rc == 0 }}"
+    docker_via_snap: "{{ docker_snap_check.rc == 0 }}"
+
+- name: Display Docker installation status
+  ansible.builtin.debug:
+    msg:
+      - "Docker available via which: {{ docker_available }}"
+      - "Docker installed via apt: {{ docker_via_apt }}"
+      - "Docker installed via snap: {{ docker_via_snap }}"
+
+# Install Docker via APT if not already installed
+- name: Add Docker GPG key
+  ansible.builtin.apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  when: not docker_available and not docker_via_snap
+
+- name: Add Docker APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+  when: not docker_available and not docker_via_snap
+
+- name: Update apt cache after adding Docker repository
+  ansible.builtin.apt:
+    update_cache: yes
+  when: not docker_available and not docker_via_snap
+
+- name: Install Docker Engine via APT
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+  when: not docker_available and not docker_via_snap
+  register: docker_apt_install
+  notify: Restart Docker
+
+- name: Check Docker service status (systemd)
+  ansible.builtin.command: systemctl is-active docker
+  register: docker_systemd_status
+  changed_when: false
+  failed_when: false
+
+- name: Start Docker service (systemd)
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: yes
+  when: docker_via_apt or (docker_apt_install is defined and docker_apt_install.changed)
+
+# Handle snap Docker installation
+- name: Install Docker via snap if not installed via apt
+  ansible.builtin.command: snap install docker
+  register: docker_snap_install
+  when: not docker_available and not docker_via_apt
+  changed_when: "'docker' in docker_snap_install.stdout"
+  failed_when: false
+
+- name: Wait for snap Docker installation to complete
+  ansible.builtin.pause:
+    seconds: 10
+  when: docker_snap_install is defined and docker_snap_install.changed
+
+- name: Wait for any in-progress snap operations to complete
+  ansible.builtin.shell: "snap changes | grep -q 'Doing.*docker' && sleep 5 || echo 'No in-progress changes'"
+  register: snap_wait_result
+  until: "'No in-progress changes' in snap_wait_result.stdout"
+  retries: 12
+  delay: 5
+  when: docker_via_snap or (docker_snap_install is defined and docker_snap_install.changed)
+  changed_when: false
+
+- name: Start Docker service (snap)
+  ansible.builtin.command: snap start docker
+  register: snap_start_result
+  when: docker_via_snap or (docker_snap_install is defined and docker_snap_install.changed)
+  changed_when: true
+  failed_when: false
+
+- name: Add user to docker group (for apt installation)
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: docker
+    append: yes
+  when: docker_via_apt or (docker_apt_install is defined and docker_apt_install.changed)
+
+- name: Wait for Docker to be ready
+  ansible.builtin.command: docker info
+  register: docker_info_result
+  until: docker_info_result.rc == 0
+  retries: 10
+  delay: 5
+  changed_when: false
+
+- name: Display Docker version
+  ansible.builtin.command: docker --version
+  register: docker_version
+  changed_when: false
+
+- name: Show Docker version
+  ansible.builtin.debug:
+    msg: "{{ docker_version.stdout }}"
+
+- name: Pull Ray Docker image
+  community.docker.docker_image:
+    name: "{{ ray_docker_image }}"
+    source: pull
+    force_source: yes
+  register: docker_pull
+  until: docker_pull is success
+  retries: 3
+  delay: 5
+
+- name: Pull monitoring Docker images
+  community.docker.docker_image:
+    name: "{{ item }}"
+    source: pull
+    force_source: yes
+  register: monitoring_docker_pull
+  until: monitoring_docker_pull is success
+  retries: 3
+  delay: 5
+  with_items:
+    - "{{ prometheus_image }}"
+    - "{{ node_exporter_image }}"
+    - "{{ cadvisor_image }}"
+    - "{{ grafana_image }}" 

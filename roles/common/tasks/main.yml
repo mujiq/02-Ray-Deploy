@@ -1,0 +1,29 @@
+---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600 # Update every hour
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - apt-transport-https
+      - ca-certificates
+      - software-properties-common
+      - python3-pip
+      - python3-setuptools
+    state: present
+
+- name: Create Ray temporary directory
+  ansible.builtin.file:
+    path: "{{ ray_temp_dir }}"
+    state: directory
+    mode: '0777' # Ensure full permissions for Ray processes
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Check if Ray directory exists
+  ansible.builtin.stat:
+    path: "{{ ray_temp_dir }}"
+  register: ray_dir_check 

@@ -1,0 +1,38 @@
+---
+# Ray Docker image and version
+ray_docker_image: "rayproject/ray:2.9.0"
+
+# Ray ports
+ray_redis_port: 6379
+ray_dashboard_port: 8265
+ray_object_manager_port: 8076
+ray_node_manager_port: 8077
+ray_metrics_export_port: 8080
+
+# Ray configuration
+ray_head_container_name: "ray_head"
+ray_worker_container_name: "ray_worker"
+ray_temp_dir: "/home/gpadmin/ray_temp"
+
+# Docker configuration
+docker_shm_size: "2g"
+
+# Resource allocation (percentage of system resources to use)
+ray_cpu_percent: 0.8  # Use 80% of available CPUs
+ray_memory_percent: 0.8  # Use 80% of available memory
+
+# Monitoring configuration
+prometheus_image: "prom/prometheus:v2.45.0"
+prometheus_data_dir: "/home/gpadmin/prometheus_data"
+prometheus_port: 9090
+
+node_exporter_image: "prom/node-exporter:v1.6.1"
+
+cadvisor_image: "gcr.io/cadvisor/cadvisor:v0.47.2"
+cadvisor_port: 8081
+
+grafana_image: "grafana/grafana:10.0.3"
+grafana_data_dir: "/home/gpadmin/grafana_data"
+grafana_port: 3000
+grafana_admin_user: "admin"
+grafana_admin_password: "admin" 

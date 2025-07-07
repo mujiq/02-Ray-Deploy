@@ -1,0 +1,5 @@
+---
+- name: Restart Ray worker container
+  ansible.builtin.command: /usr/local/bin/start_ray_worker.sh
+  args:
+    chdir: /usr/local/bin 

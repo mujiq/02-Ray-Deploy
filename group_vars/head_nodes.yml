@@ -1,0 +1,10 @@
+---
+# Head node specific variables
+ray_head_ip: "192.168.40.240"  # Explicitly set the head node IP
+
+# Head node container name
+ray_head_container_name: "ray_head"
+
+# Head node specific resource limits (optional, can override defaults from all.yml)
+# ray_head_cpu_percent: 0.9  # Use 90% of available CPUs for head node
+# ray_head_memory_percent: 0.9  # Use 90% of available memory for head node 

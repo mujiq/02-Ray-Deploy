@@ -1,0 +1,531 @@
+openapi: 3.0.3
+info:
+  title: Ray Cluster Management API
+  description: REST API for managing Ray cluster deployments with human-in-the-loop approval
+  version: 1.0.0
+  contact:
+    name: Ray Cluster Management
+    
+servers:
+  - url: http://localhost:8000
+    description: Development server
+
+paths:
+  # Cluster Status Endpoints
+  /api/v1/cluster/status:
+    get:
+      summary: Get overall cluster status
+      description: Returns comprehensive cluster deployment and health status
+      tags:
+        - Cluster Status
+      responses:
+        '200':
+          description: Cluster status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterStatus'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/cluster/health:
+    get:
+      summary: Get cluster health status
+      description: Returns health status of Ray cluster and monitoring components
+      tags:
+        - Cluster Status
+      responses:
+        '200':
+          description: Health status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterHealth'
+
+  # Checkpoint Management
+  /api/v1/checkpoints:
+    get:
+      summary: List all checkpoints
+      description: Returns status of all deployment checkpoints
+      tags:
+        - Checkpoints
+      responses:
+        '200':
+          description: Checkpoints listed successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CheckpointStatus'
+
+  /api/v1/checkpoints/{checkpoint_name}:
+    get:
+      summary: Get specific checkpoint status
+      description: Returns detailed status of a specific checkpoint
+      tags:
+        - Checkpoints
+      parameters:
+        - name: checkpoint_name
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - prerequisites-check
+              - docker-installation
+              - cleanup-existing
+              - ray-deployment
+              - monitoring-deployment
+              - final-validation
+      responses:
+        '200':
+          description: Checkpoint status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckpointStatus'
+        '404':
+          description: Checkpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Execute checkpoint
+      description: Execute a specific deployment checkpoint
+      tags:
+        - Checkpoints
+      parameters:
+        - name: checkpoint_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckpointExecutionRequest'
+      responses:
+        '202':
+          description: Checkpoint execution started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckpointExecution'
+        '400':
+          description: Bad request (approval required)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalRequired'
+        '409':
+          description: Checkpoint already running or prerequisites not met
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Approval Management
+  /api/v1/approvals/{checkpoint_name}:
+    get:
+      summary: Get approval requirements
+      description: Check if a checkpoint requires approval and get approval details
+      tags:
+        - Approvals
+      parameters:
+        - name: checkpoint_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Approval requirements retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalInfo'
+
+    post:
+      summary: Grant approval
+      description: Grant approval for a checkpoint requiring human approval
+      tags:
+        - Approvals
+      parameters:
+        - name: checkpoint_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalRequest'
+      responses:
+        '200':
+          description: Approval granted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalResponse'
+        '400':
+          description: Invalid approval request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Node Management
+  /api/v1/nodes:
+    get:
+      summary: List cluster nodes
+      description: Returns information about all nodes in the cluster
+      tags:
+        - Nodes
+      responses:
+        '200':
+          description: Nodes listed successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NodeInfo'
+
+  /api/v1/nodes/{node_name}:
+    get:
+      summary: Get node details
+      description: Returns detailed information about a specific node
+      tags:
+        - Nodes
+      parameters:
+        - name: node_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Node details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeDetails'
+        '404':
+          description: Node not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Monitoring Endpoints
+  /api/v1/monitoring/prometheus:
+    get:
+      summary: Get Prometheus metrics
+      description: Proxy to Prometheus metrics endpoint
+      tags:
+        - Monitoring
+      responses:
+        '200':
+          description: Prometheus metrics retrieved
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/v1/monitoring/grafana/dashboards:
+    get:
+      summary: List Grafana dashboards
+      description: Returns available Grafana dashboards
+      tags:
+        - Monitoring
+      responses:
+        '200':
+          description: Dashboards listed successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Dashboard'
+
+components:
+  schemas:
+    ClusterStatus:
+      type: object
+      properties:
+        deployment_status:
+          type: string
+          enum: [COMPLETED, IN_PROGRESS, FAILED]
+        completed_checkpoints:
+          type: array
+          items:
+            type: string
+        total_checkpoints:
+          type: integer
+        checkpoint_details:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/CheckpointStatus'
+        cluster_health:
+          $ref: '#/components/schemas/ClusterHealth'
+        last_updated:
+          type: string
+          format: date-time
+
+    ClusterHealth:
+      type: object
+      properties:
+        overall_status:
+          type: string
+          enum: [HEALTHY, DEGRADED, FAILED, UNKNOWN]
+        ray_cluster:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [HEALTHY, DEGRADED, FAILED, UNKNOWN]
+            nodes:
+              type: integer
+        monitoring:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [HEALTHY, DEGRADED, FAILED, UNKNOWN]
+            services:
+              type: array
+              items:
+                type: string
+        containers:
+          type: object
+          properties:
+            total:
+              type: integer
+            running:
+              type: integer
+        endpoints:
+          type: object
+          properties:
+            healthy:
+              type: integer
+            total:
+              type: integer
+
+    CheckpointStatus:
+      type: object
+      properties:
+        checkpoint:
+          type: string
+        status:
+          type: string
+          enum: [PASSED, FAILED, NOT_FOUND, IN_PROGRESS]
+        nodes:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/NodeCheckpointStatus'
+        total_nodes:
+          type: integer
+        passed_nodes:
+          type: integer
+        message:
+          type: string
+
+    NodeCheckpointStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [PASSED, FAILED, IN_PROGRESS]
+        timestamp:
+          type: string
+          format: date-time
+        approval_required:
+          type: boolean
+        destructive_operation:
+          type: boolean
+
+    CheckpointExecutionRequest:
+      type: object
+      properties:
+        force:
+          type: boolean
+          default: false
+          description: Force execution even if prerequisites not met
+        approve:
+          type: boolean
+          default: false
+          description: Grant approval for checkpoint if required
+
+    CheckpointExecution:
+      type: object
+      properties:
+        checkpoint:
+          type: string
+        execution_id:
+          type: string
+        status:
+          type: string
+          enum: [STARTED, RUNNING, COMPLETED, FAILED]
+        started_at:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    ApprovalRequired:
+      type: object
+      properties:
+        error:
+          type: string
+          enum: [APPROVAL_REQUIRED]
+        checkpoint:
+          type: string
+        approval_info:
+          $ref: '#/components/schemas/ApprovalInfo'
+        message:
+          type: string
+
+    ApprovalInfo:
+      type: object
+      properties:
+        checkpoint:
+          type: string
+        approval_required:
+          type: boolean
+        destructive_operation:
+          type: boolean
+        approval_file:
+          type: string
+        message:
+          type: string
+        impact_summary:
+          type: array
+          items:
+            type: string
+
+    ApprovalRequest:
+      type: object
+      required:
+        - approved_by
+        - reason
+      properties:
+        approved_by:
+          type: string
+          description: Name/ID of person granting approval
+        reason:
+          type: string
+          description: Reason for approval
+        acknowledge_risks:
+          type: boolean
+          default: false
+          description: Acknowledgment of destructive operation risks
+
+    ApprovalResponse:
+      type: object
+      properties:
+        checkpoint:
+          type: string
+        approved:
+          type: boolean
+        approved_by:
+          type: string
+        approved_at:
+          type: string
+          format: date-time
+        approval_token:
+          type: string
+          description: Token to use for checkpoint execution
+
+    NodeInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        ip:
+          type: string
+        role:
+          type: string
+          enum: [head, worker]
+        status:
+          type: string
+          enum: [ONLINE, OFFLINE, UNKNOWN]
+        containers:
+          type: array
+          items:
+            type: string
+
+    NodeDetails:
+      type: object
+      properties:
+        name:
+          type: string
+        ip:
+          type: string
+        role:
+          type: string
+        status:
+          type: string
+        system_info:
+          type: object
+          properties:
+            os:
+              type: string
+            python:
+              type: string
+            memory:
+              type: string
+            disk_free:
+              type: string
+            cpu_cores:
+              type: string
+        containers:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              status:
+                type: string
+              image:
+                type: string
+        checkpoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeCheckpointStatus'
+
+    Dashboard:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        url:
+          type: string
+        description:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        details:
+          type: object 

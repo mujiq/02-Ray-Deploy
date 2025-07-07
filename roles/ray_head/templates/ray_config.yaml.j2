@@ -1,0 +1,13 @@
+cluster_name: ansible-ray-cluster
+min_workers: 0
+max_workers: {{ groups['worker_nodes'] | length }}
+idle_timeout_minutes: 5
+
+provider:
+  type: custom
+
+head_node:
+  resources: {"CPU": "$(nproc --all)", "memory": "$(awk '/MemTotal/ {printf \"%.0f\", $2 * {{ ray_memory_percent }} / 1024}' /proc/meminfo)MiB"}
+
+worker_nodes:
+  - resources: {"CPU": "$(nproc --all)", "memory": "$(awk '/MemTotal/ {printf \"%.0f\", $2 * {{ ray_memory_percent }} / 1024}' /proc/meminfo)MiB"} 

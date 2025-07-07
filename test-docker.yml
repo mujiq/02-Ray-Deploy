@@ -1,0 +1,41 @@
+---
+- name: Test Docker Installation
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+
+  tasks:
+    - name: Check current Docker status
+      ansible.builtin.command: docker --version
+      register: docker_version_check
+      failed_when: false
+      changed_when: false
+
+    - name: Display current Docker status
+      ansible.builtin.debug:
+        msg: "Docker status on {{ inventory_hostname }}: {{ 'Installed' if docker_version_check.rc == 0 else 'Not installed' }}"
+
+  roles:
+    - docker
+
+  post_tasks:
+    - name: Verify Docker installation
+      ansible.builtin.command: docker --version
+      register: final_docker_check
+      changed_when: false
+
+    - name: Display final Docker status
+      ansible.builtin.debug:
+        msg: "Final Docker version on {{ inventory_hostname }}: {{ final_docker_check.stdout }}"
+
+    - name: Test Docker functionality
+      ansible.builtin.command: docker run --rm hello-world
+      register: docker_test
+      changed_when: false
+
+    - name: Display Docker test result
+      ansible.builtin.debug:
+        msg: "Docker test successful on {{ inventory_hostname }}"
+      when: docker_test.rc == 0 

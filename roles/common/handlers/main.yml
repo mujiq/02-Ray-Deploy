@@ -1,0 +1,7 @@
+---
+- name: Restart system service
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: restarted
+  loop: "{{ services_to_restart | default([]) }}"
+  when: services_to_restart is defined 

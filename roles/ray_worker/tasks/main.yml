@@ -1,0 +1,58 @@
+---
+- name: Ensure Ray temporary directory exists on worker node
+  ansible.builtin.file:
+    path: "{{ ray_temp_dir }}"
+    state: directory
+    mode: '0777' # Ensure full permissions for Ray processes
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Stop and remove existing Ray worker container (idempotency)
+  community.docker.docker_container:
+    name: "{{ ray_worker_container_name }}"
+    state: absent
+    force_kill: yes
+  ignore_errors: true
+
+- name: Remove old Ray worker start script (idempotency)
+  ansible.builtin.file:
+    path: /usr/local/bin/start_ray_worker.sh
+    state: absent
+
+- name: Copy Ray worker start script to worker node
+  ansible.builtin.template:
+    src: ray_worker_start.sh.j2
+    dest: /usr/local/bin/start_ray_worker.sh
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Start Ray worker container
+  ansible.builtin.command: /usr/local/bin/start_ray_worker.sh
+  args:
+    chdir: /usr/local/bin
+  register: ray_worker_start_output
+  changed_when: true
+
+- name: Display Ray worker container status
+  ansible.builtin.command: docker ps -f name="{{ ray_worker_container_name }}"
+  register: ray_worker_ps
+  changed_when: false
+
+- name: Print Ray worker container status
+  ansible.builtin.debug:
+    msg: "{{ ray_worker_ps.stdout }}"
+
+- name: Wait for a moment to let Ray worker node initialize
+  ansible.builtin.pause:
+    seconds: 10
+
+- name: Check Ray worker node status
+  ansible.builtin.command: docker exec {{ ray_worker_container_name }} ray status
+  register: ray_worker_status
+  ignore_errors: true
+  changed_when: false
+
+- name: Print Ray worker node status
+  ansible.builtin.debug:
+    msg: "{{ ray_worker_status.stdout_lines | default(['Ray worker node status check failed']) }}" 

@@ -1,0 +1,5 @@
+---
+- name: Restart Ray head container
+  ansible.builtin.command: /usr/local/bin/start_ray_head.sh
+  args:
+    chdir: /usr/local/bin 

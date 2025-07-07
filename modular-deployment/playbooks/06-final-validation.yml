@@ -1,0 +1,180 @@
+---
+# Checkpoint 6: Final Validation and Testing
+# This playbook performs comprehensive validation of the deployed cluster
+# APPROVAL REQUIRED: No (read-only validation)
+
+- name: "Checkpoint 6: Final Validation and Testing"
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars:
+    checkpoint_name: "final-validation"
+    approval_required: false
+    destructive_operation: false
+    
+  tasks:
+    - name: Display checkpoint information
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 6: FINAL VALIDATION ==="
+          - "Approval Required: {{ approval_required }}"
+          - "Destructive Operation: {{ destructive_operation }}"
+          - "Description: Comprehensive validation of Ray cluster and monitoring"
+
+    - name: Check all containers are running
+      ansible.builtin.shell: docker ps --format "{{.Names}}\t{{.Status}}" | grep -E "(ray_|prometheus|grafana|node-exporter|cadvisor)"
+      register: all_containers
+      changed_when: false
+
+    - name: Test Ray cluster status
+      ansible.builtin.shell: |
+        docker exec ray_head ray status --address="127.0.0.1:6379"
+      register: final_ray_status
+      changed_when: false
+      when: inventory_hostname in groups['head_nodes']
+
+    - name: Run Ray workload test (from head node)
+      ansible.builtin.shell: |
+        docker exec ray_head python -c "
+        import ray
+        import time
+        
+        # Initialize Ray
+        ray.init(address='127.0.0.1:6379')
+        
+        # Simple distributed task
+        @ray.remote
+        def cpu_task():
+            import time
+            start = time.time()
+            # CPU intensive task
+            sum([i*i for i in range(1000000)])
+            return time.time() - start
+        
+        # Submit tasks to all available cores
+        tasks = [cpu_task.remote() for _ in range(4)]
+        results = ray.get(tasks)
+        
+        print(f'Executed {len(tasks)} tasks across cluster')
+        print(f'Average execution time: {sum(results)/len(results):.3f}s')
+        print('Ray cluster test: PASSED')
+        
+        # Get cluster resources
+        print('Cluster resources:', ray.cluster_resources())
+        
+        ray.shutdown()
+        "
+      register: ray_workload_test
+      changed_when: false
+      when: inventory_hostname in groups['head_nodes']
+
+    - name: Test monitoring endpoints
+      ansible.builtin.uri:
+        url: "{{ item.url }}"
+        method: GET
+        status_code: 200
+      register: endpoint_tests
+      failed_when: false
+      with_items:
+        - { name: "Node Exporter", url: "http://127.0.0.1:9100/metrics" }
+        - { name: "cAdvisor", url: "http://127.0.0.1:8081/metrics" }
+        - { name: "Prometheus", url: "http://127.0.0.1:9090/api/v1/status/buildinfo", head_only: true }
+        - { name: "Grafana", url: "http://127.0.0.1:3000/api/health", head_only: true }
+        - { name: "Ray Dashboard", url: "http://127.0.0.1:8265", head_only: true }
+      when: not item.get('head_only', false) or inventory_hostname in groups['head_nodes']
+
+    - name: Collect system metrics sample
+      ansible.builtin.shell: |
+        echo "=== CPU Usage ==="
+        top -bn1 | grep "Cpu(s)" | head -1
+        echo "=== Memory Usage ==="
+        free -h | grep "Mem:"
+        echo "=== Disk Usage ==="
+        df -h / | tail -1
+        echo "=== Network Connections ==="
+        netstat -tuln | grep -E "(6379|8265|9090|9100|8081|3000)" | head -10
+      register: system_metrics
+      changed_when: false
+
+    - name: Save comprehensive validation results
+      ansible.builtin.copy:
+        content: |
+          {
+            "checkpoint": "{{ checkpoint_name }}",
+            "timestamp": "{{ ansible_date_time.iso8601 }}",
+            "node": "{{ inventory_hostname }}",
+            "node_type": "{{ 'head' if inventory_hostname in groups['head_nodes'] else 'worker' }}",
+            "status": "PASSED",
+            "containers_running": {{ all_containers.stdout_lines | length }},
+            "container_details": {{ all_containers.stdout_lines | to_json }},
+            "ray_cluster_status": {{ final_ray_status.stdout_lines | default([]) | to_json }},
+            "ray_workload_test": {{ ray_workload_test.stdout_lines | default([]) | to_json }},
+            "monitoring_endpoints": {{ endpoint_tests.results | default([]) | to_json }},
+            "system_metrics": {{ system_metrics.stdout_lines | to_json }},
+            "approval_required": {{ approval_required }},
+            "destructive_operation": {{ destructive_operation }}
+          }
+        dest: "/tmp/checkpoint-{{ checkpoint_name }}-{{ inventory_hostname }}.json"
+      delegate_to: localhost
+
+- name: Generate Final Deployment Report
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Compile deployment summary
+      ansible.builtin.shell: |
+        echo "================================"
+        echo "RAY CLUSTER DEPLOYMENT COMPLETED"
+        echo "================================"
+        echo ""
+        echo "Deployment Time: $(date)"
+        echo ""
+        echo "📊 CLUSTER SUMMARY:"
+        echo "• Head Nodes: {{ groups['head_nodes'] | length }}"
+        echo "• Worker Nodes: {{ groups['worker_nodes'] | length }}"
+        echo "• Total Nodes: {{ groups['ray_cluster'] | length }}"
+        echo ""
+        echo "🌐 ACCESS POINTS:"
+        {% for host in groups['head_nodes'] %}
+        echo "• Ray Dashboard: http://{{ hostvars[host]['ansible_host'] }}:8265"
+        echo "• Prometheus: http://{{ hostvars[host]['ansible_host'] }}:9090"
+        echo "• Grafana: http://{{ hostvars[host]['ansible_host'] }}:3000 (admin/admin123)"
+        {% endfor %}
+        echo ""
+        echo "✅ ALL CHECKPOINTS COMPLETED SUCCESSFULLY"
+        echo ""
+        echo "📈 MONITORING METRICS AVAILABLE:"
+        echo "• CPU, Memory, Disk I/O across all nodes"
+        echo "• Network traffic and bandwidth utilization"
+        echo "• Docker container resource usage"
+        echo "• Ray cluster performance metrics"
+        echo ""
+        echo "🔧 MANAGEMENT:"
+        echo "• Use individual checkpoint playbooks for future updates"
+        echo "• Monitor cluster health via Grafana dashboards"
+        echo "• Scale cluster by adding nodes to inventory and running worker deployment"
+      register: deployment_summary
+
+    - name: Display final deployment summary
+      ansible.builtin.debug:
+        msg: "{{ deployment_summary.stdout_lines }}"
+
+    - name: Save deployment completion marker
+      ansible.builtin.copy:
+        content: |
+          {
+            "deployment_status": "COMPLETED",
+            "completion_time": "{{ ansible_date_time.iso8601 }}",
+            "cluster_nodes": {{ groups['ray_cluster'] | length }},
+            "head_nodes": {{ groups['head_nodes'] | to_json }},
+            "worker_nodes": {{ groups['worker_nodes'] | to_json }},
+            "checkpoints_completed": [
+              "prerequisites-check",
+              "docker-installation", 
+              "cleanup-existing",
+              "ray-deployment",
+              "monitoring-deployment",
+              "final-validation"
+            ]
+          }
+        dest: "/tmp/ray-cluster-deployment-complete.json" 

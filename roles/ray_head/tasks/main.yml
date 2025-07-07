@@ -1,0 +1,58 @@
+---
+- name: Ensure Ray temporary directory exists on head node
+  ansible.builtin.file:
+    path: "{{ ray_temp_dir }}"
+    state: directory
+    mode: '0777' # Ensure full permissions for Ray processes
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Stop and remove existing Ray head container (idempotency)
+  community.docker.docker_container:
+    name: "{{ ray_head_container_name }}"
+    state: absent
+    force_kill: yes
+  ignore_errors: true
+
+- name: Remove old Ray head start script (idempotency)
+  ansible.builtin.file:
+    path: /usr/local/bin/start_ray_head.sh
+    state: absent
+
+- name: Copy Ray head start script to head node
+  ansible.builtin.template:
+    src: ray_head_start.sh.j2
+    dest: /usr/local/bin/start_ray_head.sh
+    mode: '0755'
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Start Ray head container
+  ansible.builtin.command: /usr/local/bin/start_ray_head.sh
+  args:
+    chdir: /usr/local/bin
+  register: ray_head_start_output
+  changed_when: true
+
+- name: Display Ray head container status
+  ansible.builtin.command: docker ps -f name="{{ ray_head_container_name }}"
+  register: ray_head_ps
+  changed_when: false
+
+- name: Print Ray head container status
+  ansible.builtin.debug:
+    msg: "{{ ray_head_ps.stdout }}"
+
+- name: Wait for a moment to let Ray head node initialize
+  ansible.builtin.pause:
+    seconds: 10
+
+- name: Check Ray head node status
+  ansible.builtin.command: docker exec {{ ray_head_container_name }} ray status
+  register: ray_status
+  ignore_errors: true
+  changed_when: false
+
+- name: Print Ray head node status
+  ansible.builtin.debug:
+    msg: "{{ ray_status.stdout_lines | default(['Ray head node status check failed']) }}" 

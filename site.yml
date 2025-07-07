@@ -1,0 +1,68 @@
+---
+- name: Deploy Ray Cluster - Common Setup
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+
+  roles:
+    - common
+    - docker
+
+- name: Configure Ray Head Node
+  hosts: head_nodes
+  become: true
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+    - group_vars/head_nodes.yml
+
+  roles:
+    - ray_head
+
+- name: Configure Ray Worker Nodes
+  hosts: worker_nodes
+  become: true
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+    - group_vars/head_nodes.yml
+    - group_vars/worker_nodes.yml
+
+  roles:
+    - ray_worker
+
+- name: Verify Ray Cluster Deployment
+  hosts: head_nodes
+  become: true
+  gather_facts: false
+  vars_files:
+    - group_vars/all.yml
+  
+  tasks:
+    - name: Check Ray head node status
+      ansible.builtin.command: docker exec {{ ray_head_container_name }} ray status
+      register: ray_status
+      changed_when: false
+      ignore_errors: true
+    
+    - name: Display Ray cluster status
+      ansible.builtin.debug:
+        msg: "{{ ray_status.stdout_lines }}"
+      when: ray_status.rc == 0
+    
+    - name: Display Ray cluster error
+      ansible.builtin.debug:
+        msg: "Ray cluster status check failed: {{ ray_status.stderr }}"
+      when: ray_status.rc != 0
+
+- name: Deploy Monitoring Stack
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+
+  roles:
+    - monitoring 

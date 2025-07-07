@@ -1,0 +1,71 @@
+---
+# Checkpoint 4: Ray Cluster Deployment
+# This playbook deploys the Ray head and worker nodes
+# APPROVAL REQUIRED: No (non-destructive deployment)
+
+- name: "Checkpoint 4: Ray Cluster Deployment"
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars:
+    checkpoint_name: "ray-deployment"
+    approval_required: false
+    destructive_operation: false
+    
+  tasks:
+    - name: Display checkpoint information
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 4: RAY CLUSTER DEPLOYMENT ==="
+          - "Approval Required: {{ approval_required }}"
+          - "Destructive Operation: {{ destructive_operation }}"
+          - "Description: Deploy Ray head and worker nodes"
+
+    - name: Deploy Ray head node
+      include_role:
+        name: ray_head
+      when: inventory_hostname in groups['head_nodes']
+
+    - name: Deploy Ray worker nodes
+      include_role:
+        name: ray_worker
+      when: inventory_hostname in groups['worker_nodes']
+
+    - name: Verify Ray containers are running
+      ansible.builtin.command: docker ps --filter "name=ray" --format "{{.Names}}\t{{.Status}}"
+      register: ray_containers
+      changed_when: false
+
+    - name: Test Ray cluster connectivity (from head node)
+      ansible.builtin.shell: |
+        docker exec ray_head ray status --address="127.0.0.1:6379"
+      register: ray_status
+      changed_when: false
+      when: inventory_hostname in groups['head_nodes']
+
+    - name: Save checkpoint results
+      ansible.builtin.copy:
+        content: |
+          {
+            "checkpoint": "{{ checkpoint_name }}",
+            "timestamp": "{{ ansible_date_time.iso8601 }}",
+            "node": "{{ inventory_hostname }}",
+            "status": "PASSED",
+            "ray_containers": {{ ray_containers.stdout_lines | to_json }},
+            "cluster_status": {{ ray_status.stdout_lines | default([]) | to_json }},
+            "approval_required": {{ approval_required }},
+            "destructive_operation": {{ destructive_operation }}
+          }
+        dest: "/tmp/checkpoint-{{ checkpoint_name }}-{{ inventory_hostname }}.json"
+      delegate_to: localhost
+
+- name: Generate Ray Deployment Report
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Display completion status
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 4 COMPLETED ==="
+          - "Ray cluster deployed successfully"
+          - "Ready to proceed to Checkpoint 5: Monitoring Stack Deployment" 

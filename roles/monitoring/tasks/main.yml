@@ -1,0 +1,174 @@
+---
+# Tasks for the monitoring role
+
+- name: Create Prometheus data directory
+  ansible.builtin.file:
+    path: "{{ prometheus_data_dir }}"
+    state: directory
+    mode: '0777'
+    owner: "65534"
+    group: "65534"
+
+- name: Create Grafana data directory
+  ansible.builtin.file:
+    path: "{{ grafana_data_dir }}"
+    state: directory
+    mode: '0755'
+    owner: "472"
+    group: "472"
+
+# Node Exporter setup for all nodes
+- name: Stop and remove existing Node Exporter container (idempotency)
+  community.docker.docker_container:
+    name: node-exporter
+    state: absent
+  ignore_errors: true
+
+- name: Start Node Exporter container
+  community.docker.docker_container:
+    name: node-exporter
+    image: "{{ node_exporter_image }}"
+    restart_policy: unless-stopped
+    network_mode: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)"
+      - "--web.listen-address=0.0.0.0:9100"
+
+# cAdvisor setup for container metrics
+- name: Stop and remove existing cAdvisor container (idempotency)
+  community.docker.docker_container:
+    name: cadvisor
+    state: absent
+  ignore_errors: true
+
+- name: Start cAdvisor container
+  community.docker.docker_container:
+    name: cadvisor
+    image: "{{ cadvisor_image }}"
+    restart_policy: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--port=8081"
+      - "--housekeeping_interval=10s"
+      - "--docker_only=true"
+
+# Prometheus setup (only on head nodes)
+- name: Stop and remove existing Prometheus container (idempotency)
+  community.docker.docker_container:
+    name: prometheus
+    state: absent
+  ignore_errors: true
+  when: inventory_hostname in groups['head_nodes']
+
+- name: Create Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ prometheus_data_dir }}/prometheus.yml"
+    mode: '0644'
+    owner: "65534"
+    group: "65534"
+  when: inventory_hostname in groups['head_nodes']
+
+- name: Start Prometheus container
+  community.docker.docker_container:
+    name: prometheus
+    image: "{{ prometheus_image }}"
+    restart_policy: unless-stopped
+    network_mode: host
+    volumes:
+      - "{{ prometheus_data_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml"
+      - "{{ prometheus_data_dir }}:/prometheus"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+      - "--web.listen-address=0.0.0.0:9090"
+  when: inventory_hostname in groups['head_nodes']
+
+# Grafana setup (only on head nodes)
+- name: Stop and remove existing Grafana container (idempotency)
+  community.docker.docker_container:
+    name: grafana
+    state: absent
+  ignore_errors: true
+  when: inventory_hostname in groups['head_nodes']
+
+- name: Create Grafana provisioning directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: "472"
+    group: "472"
+  with_items:
+    - "{{ grafana_data_dir }}/provisioning/datasources"
+    - "{{ grafana_data_dir }}/provisioning/dashboards"
+    - "{{ grafana_data_dir }}/dashboards"
+  when: inventory_hostname in groups['head_nodes']
+
+- name: Create Grafana datasource configuration
+  ansible.builtin.template:
+    src: datasource.yml.j2
+    dest: "{{ grafana_data_dir }}/provisioning/datasources/datasource.yml"
+    mode: '0644'
+    owner: "472"
+    group: "472"
+  when: inventory_hostname in groups['head_nodes']
+
+- name: Create Grafana dashboard provider configuration
+  ansible.builtin.template:
+    src: dashboard-provider.yml.j2
+    dest: "{{ grafana_data_dir }}/provisioning/dashboards/provider.yml"
+    mode: '0644'
+    owner: "472"
+    group: "472"
+  when: inventory_hostname in groups['head_nodes']
+
+- name: Copy Grafana dashboards
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ grafana_data_dir }}/dashboards/{{ item }}"
+    mode: '0644'
+    owner: "472"
+    group: "472"
+  with_items:
+    - "node-exporter-dashboard.json"
+    - "docker-container-dashboard.json"
+    - "ray-cluster-dashboard.json"
+  when: inventory_hostname in groups['head_nodes']
+
+- name: Start Grafana container
+  community.docker.docker_container:
+    name: grafana
+    image: "{{ grafana_image }}"
+    restart_policy: unless-stopped
+    network_mode: host
+    env:
+      GF_SECURITY_ADMIN_USER: "{{ grafana_admin_user }}"
+      GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
+      GF_SERVER_HTTP_PORT: "{{ grafana_port }}"
+    volumes:
+      - "{{ grafana_data_dir }}:/var/lib/grafana"
+  when: inventory_hostname in groups['head_nodes']
+
+- name: Display monitoring access information
+  ansible.builtin.debug:
+    msg: 
+      - "Prometheus is available at http://{{ ansible_host }}:{{ prometheus_port }}"
+      - "Grafana is available at http://{{ ansible_host }}:{{ grafana_port }} (username: {{ grafana_admin_user }}, password: {{ grafana_admin_password }})"
+  when: inventory_hostname in groups['head_nodes'] 

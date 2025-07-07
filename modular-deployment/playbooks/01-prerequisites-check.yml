@@ -1,0 +1,102 @@
+---
+# Checkpoint 1: Prerequisites and System Readiness Check
+# This playbook validates that all target systems meet requirements before proceeding
+# APPROVAL REQUIRED: None (read-only validation)
+
+- name: "Checkpoint 1: Prerequisites and System Readiness Check"
+  hosts: ray_cluster
+  become: false
+  gather_facts: true
+  vars:
+    checkpoint_name: "prerequisites-check"
+    approval_required: false
+    destructive_operation: false
+    
+  tasks:
+    - name: Display checkpoint information
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 1: PREREQUISITES CHECK ==="
+          - "Approval Required: {{ approval_required }}"
+          - "Destructive Operation: {{ destructive_operation }}"
+          - "Description: Validate system requirements and network connectivity"
+
+    - name: Check Python installation
+      ansible.builtin.command: python3 --version
+      register: python_version
+      changed_when: false
+
+    - name: Check SSH connectivity
+      ansible.builtin.ping:
+      register: ssh_connectivity
+
+    - name: Check available disk space
+      ansible.builtin.shell: df -h / | tail -1 | awk '{print $4}'
+      register: disk_space
+      changed_when: false
+
+    - name: Check available memory
+      ansible.builtin.shell: free -h | grep "Mem:" | awk '{print $2}'
+      register: memory_info
+      changed_when: false
+
+    - name: Check CPU cores
+      ansible.builtin.shell: nproc --all
+      register: cpu_cores
+      changed_when: false
+
+    - name: Check network connectivity to head node
+      ansible.builtin.wait_for:
+        host: "{{ hostvars[groups['head_nodes'][0]]['ansible_host'] }}"
+        port: 22
+        timeout: 10
+      when: inventory_hostname not in groups['head_nodes']
+
+    - name: Compile system information
+      ansible.builtin.set_fact:
+        system_info:
+          hostname: "{{ ansible_hostname }}"
+          ip: "{{ ansible_host }}"
+          os: "{{ ansible_os_family }} {{ ansible_distribution_version }}"
+          python: "{{ python_version.stdout }}"
+          memory: "{{ memory_info.stdout }}"
+          disk_free: "{{ disk_space.stdout }}"
+          cpu_cores: "{{ cpu_cores.stdout }}"
+          ssh_ok: "{{ ssh_connectivity.ping == 'pong' }}"
+
+    - name: Display system readiness summary
+      ansible.builtin.debug:
+        msg:
+          - "Node: {{ system_info.hostname }} ({{ system_info.ip }})"
+          - "OS: {{ system_info.os }}"
+          - "Python: {{ system_info.python }}"
+          - "Memory: {{ system_info.memory }}"
+          - "Free Disk: {{ system_info.disk_free }}"
+          - "CPU Cores: {{ system_info.cpu_cores }}"
+          - "SSH Connectivity: {{ system_info.ssh_ok }}"
+
+    - name: Save checkpoint results
+      ansible.builtin.copy:
+        content: |
+          {
+            "checkpoint": "{{ checkpoint_name }}",
+            "timestamp": "{{ ansible_date_time.iso8601 }}",
+            "node": "{{ inventory_hostname }}",
+            "status": "PASSED",
+            "system_info": {{ system_info | to_json }},
+            "approval_required": {{ approval_required }},
+            "destructive_operation": {{ destructive_operation }}
+          }
+        dest: "/tmp/checkpoint-{{ checkpoint_name }}-{{ inventory_hostname }}.json"
+      delegate_to: localhost
+
+- name: Generate Prerequisites Check Report
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Compile overall status
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 1 COMPLETED ==="
+          - "All systems validated successfully"
+          - "Ready to proceed to Checkpoint 2: Docker Installation" 

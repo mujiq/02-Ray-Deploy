@@ -1,0 +1,10 @@
+---
+# Worker node specific variables
+ray_worker_container_name: "ray_worker"
+
+# Reference to head node IP
+ray_head_ip: "192.168.40.240"  # Explicitly set the head node IP
+
+# Worker node specific resource limits (optional, can override defaults from all.yml)
+# ray_worker_cpu_percent: 0.8  # Use 80% of available CPUs for worker nodes
+# ray_worker_memory_percent: 0.8  # Use 80% of available memory for worker nodes 

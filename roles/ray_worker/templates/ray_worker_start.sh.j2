@@ -1,0 +1,37 @@
+#!/bin/bash
+# This script starts a Ray worker node within a Docker container.
+
+# Stop and remove any existing container with the same name
+docker stop {{ ray_worker_container_name }} > /dev/null 2>&1 || true
+docker rm {{ ray_worker_container_name }} > /dev/null 2>&1 || true
+
+# Create the Ray temporary directory if it doesn't exist
+mkdir -p {{ ray_temp_dir }}
+chmod 777 {{ ray_temp_dir }}
+
+# Create a script to start Ray worker node
+cat > {{ ray_temp_dir }}/start_ray_worker.sh << EOF
+#!/bin/bash
+ray start --address="{{ ray_head_ip }}:6379" \\
+  --temp-dir {{ ray_temp_dir }} \\
+  --num-cpus "\$(nproc --all)" \\
+  --memory "\$(awk '/MemTotal/ {printf "%.0f", \$2 * 0.8 / 1024}' /proc/meminfo)" \\
+  --disable-usage-stats &
+
+# Keep the container running
+tail -f /dev/null
+EOF
+
+chmod +x {{ ray_temp_dir }}/start_ray_worker.sh
+
+# Run the Ray worker container
+docker run -d \
+  --name {{ ray_worker_container_name }} \
+  --restart unless-stopped \
+  --network host \
+  --shm-size={{ docker_shm_size }} \
+  -v {{ ray_temp_dir }}:{{ ray_temp_dir }} \
+  {{ ray_docker_image }} \
+  {{ ray_temp_dir }}/start_ray_worker.sh
+
+echo "Ray worker node started on $(hostname) with container name {{ ray_worker_container_name }}" 

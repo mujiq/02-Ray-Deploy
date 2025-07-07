@@ -1,0 +1,106 @@
+---
+# Checkpoint 5: Monitoring Stack Deployment
+# This playbook deploys Prometheus, Grafana, Node Exporter, and cAdvisor
+# APPROVAL REQUIRED: No (non-destructive deployment)
+
+- name: "Checkpoint 5: Monitoring Stack Deployment"
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars:
+    checkpoint_name: "monitoring-deployment"
+    approval_required: false
+    destructive_operation: false
+    
+  tasks:
+    - name: Display checkpoint information
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 5: MONITORING STACK DEPLOYMENT ==="
+          - "Approval Required: {{ approval_required }}"
+          - "Destructive Operation: {{ destructive_operation }}"
+          - "Description: Deploy monitoring components (Prometheus, Grafana, Node Exporter, cAdvisor)"
+
+    - name: Deploy monitoring stack
+      include_role:
+        name: monitoring
+
+    - name: Verify monitoring containers are running
+      ansible.builtin.command: docker ps --filter "name=prometheus|grafana|node-exporter|cadvisor" --format "{{.Names}}\t{{.Status}}"
+      register: monitoring_containers
+      changed_when: false
+
+    - name: Test Prometheus connectivity (from head node)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:9090/api/v1/status/buildinfo"
+        method: GET
+        status_code: 200
+      register: prometheus_test
+      failed_when: false
+      when: inventory_hostname in groups['head_nodes']
+
+    - name: Test Grafana connectivity (from head node)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:3000/api/health"
+        method: GET
+        status_code: 200
+      register: grafana_test
+      failed_when: false
+      when: inventory_hostname in groups['head_nodes']
+
+    - name: Test Node Exporter connectivity
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:9100/metrics"
+        method: GET
+        status_code: 200
+      register: node_exporter_test
+      failed_when: false
+
+    - name: Test cAdvisor connectivity
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8081/metrics"
+        method: GET
+        status_code: 200
+      register: cadvisor_test
+      failed_when: false
+
+    - name: Save checkpoint results
+      ansible.builtin.copy:
+        content: |
+          {
+            "checkpoint": "{{ checkpoint_name }}",
+            "timestamp": "{{ ansible_date_time.iso8601 }}",
+            "node": "{{ inventory_hostname }}",
+            "status": "PASSED",
+            "monitoring_containers": {{ monitoring_containers.stdout_lines | to_json }},
+            "prometheus_status": "{{ 'HEALTHY' if prometheus_test.status|default(0) == 200 else 'FAILED' }}",
+            "grafana_status": "{{ 'HEALTHY' if grafana_test.status|default(0) == 200 else 'FAILED' }}",
+            "node_exporter_status": "{{ 'HEALTHY' if node_exporter_test.status|default(0) == 200 else 'FAILED' }}",
+            "cadvisor_status": "{{ 'HEALTHY' if cadvisor_test.status|default(0) == 200 else 'FAILED' }}",
+            "approval_required": {{ approval_required }},
+            "destructive_operation": {{ destructive_operation }}
+          }
+        dest: "/tmp/checkpoint-{{ checkpoint_name }}-{{ inventory_hostname }}.json"
+      delegate_to: localhost
+
+- name: Generate Monitoring Deployment Report
+  hosts: head_nodes
+  gather_facts: false
+  tasks:
+    - name: Display access information
+      ansible.builtin.debug:
+        msg:
+          - "=== CHECKPOINT 5 COMPLETED ==="
+          - "Monitoring stack deployed successfully"
+          - ""
+          - "🌐 Access Information:"
+          - "• Prometheus: http://{{ ansible_host }}:9090"
+          - "• Grafana: http://{{ ansible_host }}:3000 (admin/admin123)"
+          - "• Ray Dashboard: http://{{ ansible_host }}:8265"
+          - ""
+          - "📊 Available Dashboards:"
+          - "• Node Exporter Dashboard - System metrics"
+          - "• Docker Container Dashboard - Container metrics"
+          - "• Ray Cluster Dashboard - Ray-specific metrics"
+          - ""
+          - "Ready to proceed to Checkpoint 6: Final Validation" 

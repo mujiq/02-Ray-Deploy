@@ -1,0 +1,42 @@
+#!/bin/bash
+# This script starts the Ray head node within a Docker container.
+
+# Stop and remove any existing container with the same name
+docker stop {{ ray_head_container_name }} > /dev/null 2>&1 || true
+docker rm {{ ray_head_container_name }} > /dev/null 2>&1 || true
+
+# Create the Ray temporary directory if it doesn't exist
+mkdir -p {{ ray_temp_dir }}
+chmod 777 {{ ray_temp_dir }}
+
+# Create a script to start Ray head node
+cat > {{ ray_temp_dir }}/start_ray_head.sh << EOF
+#!/bin/bash
+ray start --head \\
+  --port 6379 \\
+  --dashboard-port 8265 \\
+  --object-manager-port 8076 \\
+  --node-manager-port 8077 \\
+  --metrics-export-port 8080 \\
+  --temp-dir {{ ray_temp_dir }} \\
+  --num-cpus "\$(nproc --all)" \\
+  --memory "\$(awk '/MemTotal/ {printf "%.0f", \$2 * 0.8 / 1024}' /proc/meminfo)" \\
+  --disable-usage-stats &
+
+# Keep the container running
+tail -f /dev/null
+EOF
+
+chmod +x {{ ray_temp_dir }}/start_ray_head.sh
+
+# Run the Ray head container
+docker run -d \
+  --name {{ ray_head_container_name }} \
+  --restart unless-stopped \
+  --network host \
+  --shm-size={{ docker_shm_size }} \
+  -v {{ ray_temp_dir }}:{{ ray_temp_dir }} \
+  {{ ray_docker_image }} \
+  {{ ray_temp_dir }}/start_ray_head.sh
+
+echo "Ray head node started on $(hostname) with container name {{ ray_head_container_name }}" 

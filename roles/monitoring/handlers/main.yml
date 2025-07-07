@@ -1,0 +1,22 @@
+---
+- name: restart prometheus
+  community.docker.docker_container:
+    name: prometheus
+    restart: true
+  when: inventory_hostname in groups['head_nodes']
+
+- name: restart grafana
+  community.docker.docker_container:
+    name: grafana
+    restart: true
+  when: inventory_hostname in groups['head_nodes']
+
+- name: restart node-exporter
+  community.docker.docker_container:
+    name: node-exporter
+    restart: true
+
+- name: restart cadvisor
+  community.docker.docker_container:
+    name: cadvisor
+    restart: true 
