@@ -1,0 +1,36 @@
+# Core Ray and serving dependencies
+ray[serve]==2.9.0
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+pydantic==2.5.0
+
+# Machine learning and audio processing
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.36.0
+accelerate>=0.25.0
+sentencepiece>=0.1.99
+
+# Audio processing
+librosa>=0.10.1
+soundfile>=0.12.1
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Hugging Face models
+huggingface_hub>=0.19.0
+datasets>=2.15.0
+
+# Optional dependencies for specific models
+fairseq>=0.12.2  # For FastSpeech2
+einops>=0.7.0   # For some transformer models
+
+# Development and monitoring
+requests>=2.31.0
+aiofiles>=23.2.1
+python-multipart>=0.0.6
+
+# Optional voice processing
+pyaudio>=0.2.11  # For real-time audio capture
+webrtcvad>=2.0.10  # Voice activity detection 

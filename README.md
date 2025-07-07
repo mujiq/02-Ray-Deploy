@@ -31,6 +31,23 @@ This project provides a comprehensive Ray cluster deployment solution using Ansi
 - **Prometheus**: http://192.168.40.240:9090  
 - **Grafana**: http://192.168.40.240:3000 (admin/admin123)
 
+### 4. Deploy AI Services
+```bash
+# Deploy TTS Service
+cd ai-services/tts/
+./deployment/deploy_tts.sh --install-deps --port 8000
+
+# Test TTS Service
+curl -X POST http://192.168.40.240:8000/synthesize \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello from Ray cluster!", "emotion": "happy"}'
+```
+
+### 5. Access AI Services
+- **TTS Service API**: http://192.168.40.240:8000
+- **TTS API Docs**: http://192.168.40.240:8000/docs
+- **TTS WebSocket**: ws://192.168.40.240:8000/ws/tts
+
 ## Architecture
 
 ### Current Deployment
@@ -38,6 +55,7 @@ This project provides a comprehensive Ray cluster deployment solution using Ansi
 - **Worker Nodes**: 4 nodes (G-241, G-242, G-243, G-244) - 16 CPUs each
 - **Total Cluster**: 96 CPUs, 500GB+ RAM
 - **Monitoring**: Full Prometheus/Grafana stack deployed
+- **AI Services**: Production-ready TTS service deployed
 
 ### Components
 
@@ -51,13 +69,34 @@ modular-deployment/
 └── README.md           # Detailed documentation
 ```
 
-#### 2. **Ray Cluster Services**
+#### 2. **AI Services** 🤖
+```
+ai-services/
+├── tts/                 # Text-to-Speech service (Production Ready)
+│   ├── deployment/      # Ray Serve TTS deployment
+│   ├── tests/           # Comprehensive test suite
+│   └── docs/            # API documentation
+└── README.md           # AI services overview
+```
+
+**Current Services:**
+- **🎵 TTS Service** (port 8000): Multi-model text-to-speech with streaming
+  - Models: Kyutai TTS, Orpheus TTS, FastSpeech2
+  - Features: Emotion control, voice cloning, real-time streaming
+  - Auto-scaling: 1-5 replicas based on load
+
+**Planned Services:**
+- **🖼️ Image Generation**: Stable Diffusion, DALL-E style
+- **🧠 LLM Service**: Large Language Models for text generation
+- **🎭 Computer Vision**: Object detection, image classification
+
+#### 3. **Ray Cluster Services**
 - **Ray Head**: Central coordinator with dashboard
 - **Ray Workers**: Distributed compute nodes
 - **Redis**: Cluster state management
 - **Docker**: Containerized deployment
 
-#### 3. **Monitoring Stack**
+#### 4. **Monitoring Stack**
 - **Prometheus** (port 9090): Metrics collection and storage
 - **Grafana** (port 3000): Visualization dashboards
 - **Node Exporter** (port 9100): System metrics on all nodes
@@ -271,7 +310,13 @@ For detailed testing documentation, see [tests/README.md](tests/README.md).
 ```
 02-Ray-Deploy/
 ├── specs/                           # Project specifications
-├── tests/                           # NEW: Comprehensive testing suite
+├── ai-services/                     # AI Services for Ray cluster
+│   ├── tts/                         # Text-to-Speech service
+│   │   ├── deployment/              # TTS deployment scripts
+│   │   ├── tests/                   # TTS test suite
+│   │   └── docs/                    # TTS documentation
+│   └── README.md                    # AI services overview
+├── tests/                           # Comprehensive testing suite
 │   ├── cluster/                     # Ray cluster functionality tests
 │   ├── docker/                      # Docker configuration tests  
 │   ├── validation/                  # Configuration validation tests
