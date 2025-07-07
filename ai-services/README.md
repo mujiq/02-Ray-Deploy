@@ -34,6 +34,26 @@ cd tts/
 
 **Documentation**: [TTS Service README](tts/README.md)
 
+### 🌐 Translation Service
+**Location**: `translation/`  
+**Status**: ✅ Production Ready
+
+**Features**:
+- 200+ language support with three state-of-the-art models
+- Multi-model architecture (NLLB-200, UMT5-XXL, Babel-83B)
+- Automatic model selection and intelligent failover
+- Language detection with confidence scores
+- Auto-scaling (2-8 replicas total)
+- Redundancy across cluster nodes
+
+**Quick Start**:
+```bash
+cd translation/
+./deployment/deploy_translation.sh --install-deps --port 8001
+```
+
+**Documentation**: [Translation Service README](translation/README.md)
+
 ### 🔮 Future Services (Planned)
 
 #### 🖼️ Image Generation Service
@@ -130,6 +150,10 @@ All services are designed to leverage the existing Ray cluster:
 # Deploy TTS service
 cd ai-services/tts/
 ./deployment/deploy_tts.sh --install-deps --port 8000
+
+# Deploy Translation service
+cd ai-services/translation/
+./deployment/deploy_translation.sh --install-deps --port 8001
 ```
 
 #### Option 2: Multi-Service Deployment (Future)
@@ -142,9 +166,10 @@ cd ai-services/tts/
 
 Services will be available at:
 - **TTS Service**: `http://ray-head:8000`
-- **Image Service**: `http://ray-head:8001` (planned)
-- **LLM Service**: `http://ray-head:8002` (planned)
-- **Vision Service**: `http://ray-head:8003` (planned)
+- **Translation Service**: `http://ray-head:8001`
+- **Image Service**: `http://ray-head:8002` (planned)
+- **LLM Service**: `http://ray-head:8003` (planned)
+- **Vision Service**: `http://ray-head:8004` (planned)
 
 ## 📊 Monitoring & Management
 
@@ -258,6 +283,7 @@ All AI services follow consistent API patterns:
 | Service | Latency | Throughput | GPU Memory | CPU Cores |
 |---------|---------|------------|------------|-----------|
 | TTS     | 200-800ms | 10-50 req/s | 2-8GB | 2-4 |
+| Translation | 200-1200ms | 5-25 req/s | 4-16GB | 4-12 |
 | Image   | 1-5s    | 5-20 req/s | 4-12GB | 4-8 |
 | LLM     | 100-2000ms | 1-10 req/s | 8-24GB | 8-16 |
 | Vision  | 50-500ms | 20-100 req/s | 2-6GB | 2-4 |
@@ -311,7 +337,7 @@ The AI services ecosystem provides a scalable, production-ready platform for dep
 ✅ **Comprehensive Testing** - Full test suites and examples  
 
 **Cluster Status**: 5 nodes, 96 CPUs, 500GB+ RAM  
-**Current Services**: TTS (Production Ready)  
+**Current Services**: TTS (Production Ready), Translation (Production Ready)  
 **Planned Services**: Image Generation, LLM, Computer Vision  
 
 🚀 **Ready for enterprise AI workloads!** 

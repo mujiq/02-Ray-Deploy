@@ -1,0 +1,95 @@
+# Enterprise Translation Service Dependencies
+# Optimized for Ray cluster deployment with multiple translation models
+
+# Ray and Serving
+ray[serve]==2.8.0
+ray[default]==2.8.0
+
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# Machine Learning Core
+torch==2.1.0
+torchvision==0.16.0
+torchaudio==0.15.0
+transformers==4.36.0
+accelerate==0.25.0
+optimum==1.16.0
+
+# Model-specific dependencies
+# NLLB-200
+sentencepiece==0.1.99
+sacremoses==0.1.1
+
+# UMT5
+protobuf==4.25.1
+tensorflow-text==2.14.0  # For T5 tokenizer compatibility
+
+# Babel-83B (Large model support)
+bitsandbytes==0.41.3  # For 8-bit quantization
+datasets==2.15.0
+
+# Language Detection
+langdetect==1.0.9
+polyglot==16.7.4  # Alternative language detection
+PyICU==2.12  # Required for polyglot
+
+# Audio and Media Processing
+librosa==0.10.1
+soundfile==0.12.1
+scipy==1.11.4
+
+# Performance and Optimization
+numpy==1.24.3
+pandas==2.1.4
+scikit-learn==1.3.2
+numba==0.58.1  # JIT compilation
+psutil==5.9.6  # System monitoring
+
+# Async and Concurrency
+asyncio==3.4.3
+aiofiles==23.2.1
+httpx==0.25.2
+
+# Monitoring and Logging
+prometheus-client==0.19.0
+structlog==23.2.0
+rich==13.7.0  # Beautiful logging
+
+# Data Processing
+regex==2023.10.3
+tokenizers==0.15.0
+huggingface-hub==0.19.4
+
+# Development and Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2  # For testing async endpoints
+
+# Memory Management
+gc-python-utils==1.0.0
+memory-profiler==0.61.0
+
+# Configuration Management
+python-dotenv==1.0.0
+PyYAML==6.0.1
+
+# Security
+cryptography==41.0.8
+
+# System Dependencies (install via apt/yum if needed):
+# libicu-dev
+# libffi-dev  
+# python3-dev
+# build-essential
+
+# GPU Support (uncomment if using CUDA)
+# nvidia-ml-py==12.535.133
+# triton==2.1.0
+
+# Optional: Model compression and optimization
+# onnx==1.15.0
+# onnxruntime==1.16.3
+# intel-extension-for-pytorch==2.1.0  # Intel optimization 
