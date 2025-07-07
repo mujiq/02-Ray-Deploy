@@ -206,12 +206,76 @@ curl -X POST http://localhost:8000/api/v1/checkpoints/docker-installation \
 ./modular-deployment/validation/validate_checkpoint.py --approval-check cleanup-existing
 ```
 
+## Testing Suite
+
+### Comprehensive Test Framework
+The project includes a comprehensive testing suite organized in the `tests/` directory:
+
+```
+tests/
+├── cluster/          # Ray cluster functionality tests
+│   ├── quick_test.py            # Fast connectivity test
+│   ├── detailed_test.py         # Comprehensive performance test
+│   ├── simple_cluster_test.py   # 5-minute stress test
+│   └── test_ray_cluster.py      # Legacy comprehensive test
+├── docker/           # Docker configuration tests
+│   └── test-docker.yml          # Docker installation verification
+├── validation/       # Configuration validation tests
+│   ├── validate_cluster_versions.py   # Version consistency check
+│   └── validate_checkpoint.py         # Deployment validation
+└── benchmark/        # Performance benchmarking (future)
+```
+
+### Quick Test Commands
+
+**Run All Tests (Recommended):**
+```bash
+./run_tests.sh
+```
+
+**Run Specific Test Category:**
+```bash
+./run_tests.sh --category cluster
+```
+
+**List All Available Tests:**
+```bash
+./run_tests.sh --list
+```
+
+**Manual Test Execution:**
+```bash
+# Run Quick Cluster Test
+sudo docker cp tests/cluster/quick_test.py ray_head:/tmp/
+sudo docker exec ray_head python /tmp/quick_test.py
+
+# Validate Cluster Versions
+python3 tests/validation/validate_cluster_versions.py
+
+# Test Docker Configuration
+ansible-playbook tests/docker/test-docker.yml
+```
+
+### Expected Test Results
+- ✅ All 5 nodes detected and responsive
+- ✅ 96 total CPU cores available
+- ✅ Version consistency across cluster
+- ✅ Efficient task distribution (20x+ parallelization)
+- ✅ No container health issues
+
+For detailed testing documentation, see [tests/README.md](tests/README.md).
+
 ## File Structure
 
 ### Current Project Layout
 ```
 02-Ray-Deploy/
 ├── specs/                           # Project specifications
+├── tests/                           # NEW: Comprehensive testing suite
+│   ├── cluster/                     # Ray cluster functionality tests
+│   ├── docker/                      # Docker configuration tests  
+│   ├── validation/                  # Configuration validation tests
+│   └── benchmark/                   # Performance benchmarking (future)
 ├── roles/                           # Ansible roles
 │   ├── common/                      # Common setup tasks
 │   ├── docker/                      # Docker installation
@@ -219,9 +283,8 @@ curl -X POST http://localhost:8000/api/v1/checkpoints/docker-installation \
 │   ├── ray_worker/                  # Ray worker node setup
 │   └── monitoring/                  # Monitoring stack
 ├── group_vars/                      # Ansible variables
-├── modular-deployment/              # NEW: Modular deployment system
+├── modular-deployment/              # Modular deployment system
 │   ├── playbooks/                   # Individual checkpoint playbooks
-│   ├── validation/                  # Status validation scripts
 │   ├── api-interface/               # REST API server
 │   └── deploy-master.py             # Master orchestrator
 ├── inventory.ini                    # Cluster node definitions
