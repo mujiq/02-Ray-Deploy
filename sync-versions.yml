@@ -1,0 +1,98 @@
+---
+- name: "Synchronize Ray and Python Versions Across Cluster"
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+
+  pre_tasks:
+    - name: Display cluster synchronization info
+      debug:
+        msg:
+          - "=========================================="
+          - "RAY CLUSTER VERSION SYNCHRONIZATION"
+          - "=========================================="
+          - "Target Ray version: {{ ray_version }}"
+          - "Target Python version: {{ python_version }}"
+          - "Ray Docker image: {{ ray_docker_image }}"
+          - "Enforcement enabled: {{ enforce_version_consistency }}"
+          - "Cleanup conflicts: {{ cleanup_conflicting_versions }}"
+          - "=========================================="
+
+  roles:
+    - version_control
+
+  post_tasks:
+    - name: Verify all nodes have consistent versions
+      block:
+        - name: Check Ray container version
+          community.docker.docker_container_info:
+            name: "{{ ray_head_container_name if inventory_hostname in groups['head_nodes'] else ray_worker_container_name }}"
+          register: final_ray_container
+          ignore_errors: true
+
+        - name: Get final Ray image version
+          set_fact:
+            final_ray_image: "{{ final_ray_container.container.Config.Image if final_ray_container.exists else 'none' }}"
+
+        - name: Display final version status
+          debug:
+            msg:
+              - "Node: {{ inventory_hostname }}"
+              - "Type: {{ 'Head' if inventory_hostname in groups['head_nodes'] else 'Worker' }}"
+              - "Ray Image: {{ final_ray_image }}"
+              - "Status: {{ 'SYNCHRONIZED' if final_ray_image == ray_docker_image else 'NEEDS ATTENTION' }}"
+
+        - name: Read version info file
+          slurp:
+            src: "{{ ray_temp_dir }}/version_info.env"
+          register: version_info_content
+          ignore_errors: true
+
+        - name: Display version info
+          debug:
+            msg: "{{ version_info_content.content | b64decode | split('\n') }}"
+          when: version_info_content is succeeded
+
+- name: "Generate Version Synchronization Report"
+  hosts: localhost
+  gather_facts: true
+  
+  tasks:
+    - name: Create synchronization report
+      copy:
+        content: |
+          # Ray Cluster Version Synchronization Report
+          # Generated: {{ ansible_date_time.iso8601 }}
+          
+          ## Configuration
+          - Target Ray Version: {{ hostvars[groups['ray_cluster'][0]]['ray_version'] }}
+          - Target Python Version: {{ hostvars[groups['ray_cluster'][0]]['python_version'] }}
+          - Ray Docker Image: {{ hostvars[groups['ray_cluster'][0]]['ray_docker_image'] }}
+          
+          ## Cluster Status
+          {% for host in groups['ray_cluster'] %}
+          ### {{ host }} ({{ 'Head' if host in groups['head_nodes'] else 'Worker' }})
+          - Final Ray Image: {{ hostvars[host]['final_ray_image'] | default('unknown') }}
+          - Status: {{ 'SYNCHRONIZED' if hostvars[host]['final_ray_image'] | default('') == hostvars[host]['ray_docker_image'] else 'NEEDS ATTENTION' }}
+          
+          {% endfor %}
+          
+          ## Next Steps
+          1. Review any nodes marked as "NEEDS ATTENTION"
+          2. Run the main deployment playbook: `ansible-playbook site.yml`
+          3. Test cluster functionality with the test script
+          
+        dest: "./version_sync_report.md"
+        mode: '0644'
+
+    - name: Display synchronization summary
+      debug:
+        msg:
+          - "================================================"
+          - "VERSION SYNCHRONIZATION COMPLETE"
+          - "================================================"
+          - "Report generated: ./version_sync_report.md"
+          - "Next: Run 'ansible-playbook site.yml' to deploy"
+          - "================================================" 

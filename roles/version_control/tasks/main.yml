@@ -1,0 +1,120 @@
+---
+- name: "Version Control - Check and enforce Ray/Python version consistency"
+  block:
+    - name: Check current Ray container status
+      community.docker.docker_container_info:
+        name: "{{ ray_head_container_name if inventory_hostname in groups['head_nodes'] else ray_worker_container_name }}"
+      register: current_ray_container
+      ignore_errors: true
+
+    - name: Get current Ray container image if exists
+      set_fact:
+        current_ray_image: "{{ current_ray_container.container.Config.Image if current_ray_container.exists else 'none' }}"
+
+    - name: Display current Ray image
+      debug:
+        msg: "Current Ray image: {{ current_ray_image }}, Target image: {{ ray_docker_image }}"
+
+    - name: Check if Ray version matches target
+      set_fact:
+        ray_version_mismatch: "{{ current_ray_image != ray_docker_image }}"
+
+    - name: Pull target Ray Docker image
+      community.docker.docker_image:
+        name: "{{ ray_docker_image }}"
+        source: pull
+        force_source: true
+      when: ray_version_mismatch or current_ray_image == 'none'
+
+    - name: Stop and remove mismatched Ray containers
+      block:
+        - name: Stop Ray head container if version mismatch
+          community.docker.docker_container:
+            name: "{{ ray_head_container_name }}"
+            state: absent
+            force_delete: true
+          when: inventory_hostname in groups['head_nodes'] and ray_version_mismatch
+          ignore_errors: true
+
+        - name: Stop Ray worker container if version mismatch
+          community.docker.docker_container:
+            name: "{{ ray_worker_container_name }}"
+            state: absent
+            force_delete: true
+          when: inventory_hostname in groups['worker_nodes'] and ray_version_mismatch
+          ignore_errors: true
+
+        - name: Remove old Ray images to free space
+          community.docker.docker_image:
+            name: "{{ current_ray_image }}"
+            state: absent
+          when: ray_version_mismatch and current_ray_image != 'none' and current_ray_image != ray_docker_image
+          ignore_errors: true
+
+      when: cleanup_conflicting_versions and ray_version_mismatch
+
+    - name: Test Ray container Python version compatibility
+      block:
+        - name: Check Python version in Ray container
+          shell: docker run --rm {{ ray_docker_image }} python --version
+          register: python_version_check
+          ignore_errors: true
+
+        - name: Extract Python version from Ray container
+          set_fact:
+            ray_container_python_version: "{{ python_version_check.stdout | regex_replace('Python ([0-9]+\\.[0-9]+).*', '\\1') }}"
+          when: python_version_check is succeeded
+
+        - name: Display Python version compatibility
+          debug:
+            msg: 
+              - "Ray container Python version: {{ ray_container_python_version | default('unknown') }}"
+              - "Target Python version: {{ python_version }}"
+              - "Compatible: {{ ray_container_python_version | default('0.0') is version(python_version, '>=') and ray_container_python_version | default('0.0') is version(python_version + '.99', '<') }}"
+
+        - name: Warn about Python version mismatch
+          debug:
+            msg:
+              - "⚠️  WARNING: Python version mismatch detected!"
+              - "Container has Python {{ ray_container_python_version | default('unknown') }}"
+              - "Target is Python {{ python_version }}"
+              - "This may cause client connection issues"
+          when: 
+            - python_version_check is succeeded
+            - ray_container_python_version is defined
+            - not (ray_container_python_version is version(python_version, '>=') and ray_container_python_version is version(python_version + '.99', '<'))
+
+      when: enforce_version_consistency
+
+    - name: Force pull latest Ray image if enforcing consistency
+      community.docker.docker_image:
+        name: "{{ ray_docker_image }}"
+        source: pull
+        force_source: true
+      when: enforce_version_consistency
+
+  when: enforce_version_consistency is defined and enforce_version_consistency
+
+- name: Create version info file
+  copy:
+    content: |
+      # Ray Cluster Version Information
+      # Generated on: {{ ansible_date_time.iso8601 }}
+      
+      RAY_VERSION={{ ray_version }}
+      RAY_DOCKER_IMAGE={{ ray_docker_image }}
+      PYTHON_VERSION={{ python_version }}
+      NODE_TYPE={{ 'head' if inventory_hostname in groups['head_nodes'] else 'worker' }}
+      HOSTNAME={{ inventory_hostname }}
+      LAST_UPDATE={{ ansible_date_time.iso8601 }}
+    dest: "{{ ray_temp_dir }}/version_info.env"
+    mode: '0644'
+
+- name: Display version enforcement status
+  debug:
+    msg:
+      - "Version enforcement: {{ 'ENABLED' if enforce_version_consistency else 'DISABLED' }}"
+      - "Cleanup conflicting versions: {{ 'ENABLED' if cleanup_conflicting_versions else 'DISABLED' }}"
+      - "Target Ray version: {{ ray_version }}"
+      - "Target Python version: {{ python_version }}"
+      - "Ray Docker image: {{ ray_docker_image }}" 

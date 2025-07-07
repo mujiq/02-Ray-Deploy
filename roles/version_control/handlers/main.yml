@@ -1,0 +1,29 @@
+---
+- name: restart ray head
+  community.docker.docker_container:
+    name: "{{ ray_head_container_name }}"
+    state: absent
+    force_delete: true
+  when: inventory_hostname in groups['head_nodes']
+  listen: "restart ray services"
+
+- name: restart ray worker
+  community.docker.docker_container:
+    name: "{{ ray_worker_container_name }}"
+    state: absent
+    force_delete: true
+  when: inventory_hostname in groups['worker_nodes']
+  listen: "restart ray services"
+
+- name: cleanup old images
+  community.docker.docker_image:
+    name: "{{ item }}"
+    state: absent
+  with_items: "{{ old_ray_images | default([]) }}"
+  ignore_errors: true
+  listen: "cleanup old ray images"
+
+- name: validate cluster consistency
+  debug:
+    msg: "Ray cluster version consistency validated"
+  listen: "validate versions" 

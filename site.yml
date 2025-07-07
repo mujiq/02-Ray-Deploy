@@ -9,6 +9,7 @@
   roles:
     - common
     - docker
+    - version_control
 
 - name: Configure Ray Head Node
   hosts: head_nodes

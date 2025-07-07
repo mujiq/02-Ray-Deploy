@@ -1,9 +1,18 @@
 #!/bin/bash
 # This script starts a Ray worker node within a Docker container.
+# Version: {{ ray_version }} | Python: {{ python_version }} | Image: {{ ray_docker_image }}
 
 # Stop and remove any existing container with the same name
 docker stop {{ ray_worker_container_name }} > /dev/null 2>&1 || true
 docker rm {{ ray_worker_container_name }} > /dev/null 2>&1 || true
+
+# Validate Ray Docker image version
+echo "Validating Ray Docker image: {{ ray_docker_image }}"
+if ! docker images | grep -q "{{ ray_docker_image.split(':')[0] }}.*{{ ray_docker_image.split(':')[1] }}"; then
+    echo "Warning: Required Ray image {{ ray_docker_image }} not found locally"
+    echo "Pulling {{ ray_docker_image }}..."
+    docker pull {{ ray_docker_image }}
+fi
 
 # Create the Ray temporary directory if it doesn't exist
 mkdir -p {{ ray_temp_dir }}

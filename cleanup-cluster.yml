@@ -1,0 +1,211 @@
+---
+- name: "Complete Ray Cluster Cleanup"
+  hosts: ray_cluster
+  become: true
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+
+  tasks:
+    - name: Display cleanup information
+      debug:
+        msg:
+          - "================================================"
+          - "COMPLETE RAY CLUSTER CLEANUP"
+          - "================================================"
+          - "This will remove ALL Ray containers and images"
+          - "Target nodes: {{ groups['ray_cluster'] | length }}"
+          - "================================================"
+
+    - name: Stop and remove ALL Ray containers
+      block:
+        - name: Stop Ray head container
+          community.docker.docker_container:
+            name: "{{ ray_head_container_name }}"
+            state: absent
+            force_kill: true
+          ignore_errors: true
+
+        - name: Stop Ray worker container
+          community.docker.docker_container:
+            name: "{{ ray_worker_container_name }}"
+            state: absent
+            force_kill: true
+          ignore_errors: true
+
+        - name: Stop any other Ray containers
+          shell: |
+            docker ps -a --filter "name=ray" --format "{% raw %}{{.Names}}{% endraw %}" | xargs -r docker rm -f
+          ignore_errors: true
+
+    - name: Stop and remove ALL monitoring containers
+      block:
+        - name: Stop Node Exporter container
+          community.docker.docker_container:
+            name: "node_exporter"
+            state: absent
+            force_kill: true
+          ignore_errors: true
+
+        - name: Stop cAdvisor container
+          community.docker.docker_container:
+            name: "cadvisor"
+            state: absent
+            force_kill: true
+          ignore_errors: true
+
+        - name: Stop Prometheus container (head node only)
+          community.docker.docker_container:
+            name: "prometheus"
+            state: absent
+            force_kill: true
+          when: inventory_hostname in groups['head_nodes']
+          ignore_errors: true
+
+        - name: Stop Grafana container (head node only)
+          community.docker.docker_container:
+            name: "grafana"
+            state: absent
+            force_kill: true
+          when: inventory_hostname in groups['head_nodes']
+          ignore_errors: true
+
+    - name: Remove ALL Ray Docker images
+      block:
+        - name: List Ray images
+          shell: docker images --filter "reference=rayproject/ray:*" --format "{% raw %}{{.Repository}}:{{.Tag}}{% endraw %}"
+          register: ray_images
+          ignore_errors: true
+
+        - name: Remove Ray images
+          community.docker.docker_image:
+            name: "{{ item }}"
+            state: absent
+            force: true
+          with_items: "{{ ray_images.stdout_lines }}"
+          when: ray_images.stdout_lines is defined
+          ignore_errors: true
+
+    - name: Remove monitoring Docker images
+      block:
+        - name: Remove monitoring images
+          community.docker.docker_image:
+            name: "{{ item }}"
+            state: absent
+            force: true
+          with_items:
+            - "prom/prometheus:v2.45.0"
+            - "prom/node-exporter:v1.6.1"
+            - "gcr.io/cadvisor/cadvisor:v0.47.2"
+            - "grafana/grafana:10.0.3"
+          ignore_errors: true
+
+    - name: Clean up Ray directories and files
+      block:
+        - name: Remove Ray temporary directory
+          file:
+            path: "{{ ray_temp_dir }}"
+            state: absent
+
+        - name: Remove Ray start scripts
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - "/usr/local/bin/start_ray_head.sh"
+            - "/usr/local/bin/start_ray_worker.sh"
+          ignore_errors: true
+
+        - name: Remove version info files
+          file:
+            path: "{{ ray_temp_dir }}/version_info.env"
+            state: absent
+          ignore_errors: true
+
+    - name: Clean up monitoring directories (head node only)
+      block:
+        - name: Remove Prometheus data directory
+          file:
+            path: "{{ prometheus_data_dir }}"
+            state: absent
+
+        - name: Remove Grafana data directory
+          file:
+            path: "{{ grafana_data_dir }}"
+            state: absent
+      when: inventory_hostname in groups['head_nodes']
+
+    - name: Docker system cleanup
+      block:
+        - name: Remove unused Docker images
+          shell: docker image prune -f
+          ignore_errors: true
+
+        - name: Remove unused Docker containers
+          shell: docker container prune -f
+          ignore_errors: true
+
+        - name: Remove unused Docker volumes
+          shell: docker volume prune -f
+          ignore_errors: true
+
+        - name: Remove unused Docker networks
+          shell: docker network prune -f
+          ignore_errors: true
+
+    - name: Display cleanup results
+      block:
+        - name: Show remaining Docker images
+          shell: docker images
+          register: remaining_images
+
+        - name: Show remaining Docker containers
+          shell: docker ps -a
+          register: remaining_containers
+
+        - name: Display cleanup summary
+          debug:
+            msg:
+              - "CLEANUP COMPLETE FOR: {{ inventory_hostname }}"
+              - "Remaining images: {{ remaining_images.stdout_lines | length }}"
+              - "Remaining containers: {{ remaining_containers.stdout_lines | length - 1 }}"
+
+- name: "Cleanup Summary Report"
+  hosts: localhost
+  gather_facts: true
+  
+  tasks:
+    - name: Create cleanup report
+      copy:
+        content: |
+          # Ray Cluster Cleanup Report
+          # Generated: {{ ansible_date_time.iso8601 }}
+          
+          ## Cleanup Completed
+          - All Ray containers stopped and removed
+          - All monitoring containers stopped and removed  
+          - All Ray Docker images removed
+          - All monitoring Docker images removed
+          - All Ray directories and configuration files cleaned
+          - Docker system cleanup performed
+          
+          ## Next Steps
+          1. Run: `ansible-playbook site.yml` to reinstall with correct versions
+          2. Verify Python versions match target configuration
+          3. Test cluster functionality
+          
+        dest: "./cleanup_report.md"
+        mode: '0644'
+
+    - name: Display cleanup completion
+      debug:
+        msg:
+          - "================================================"
+          - "CLEANUP COMPLETED SUCCESSFULLY"
+          - "================================================"
+          - "All Ray containers and images have been removed"
+          - "All configuration files have been cleaned up"
+          - "Ready for fresh installation"
+          - "================================================"
+          - "Next: Run 'ansible-playbook site.yml' to reinstall"
+          - "================================================" 

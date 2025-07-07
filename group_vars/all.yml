@@ -1,6 +1,12 @@
 ---
 # Ray Docker image and version
-ray_docker_image: "rayproject/ray:2.9.0"
+ray_docker_image: "rayproject/ray:2.47.1"
+ray_version: "2.47.1"
+python_version: "3.11"  # Target Python version for consistency
+
+# Version enforcement settings
+enforce_version_consistency: true
+cleanup_conflicting_versions: true
 
 # Ray ports
 ray_redis_port: 6379

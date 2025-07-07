@@ -59,7 +59,6 @@
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     command:
       - "--port=8081"
@@ -161,7 +160,7 @@
     env:
       GF_SECURITY_ADMIN_USER: "{{ grafana_admin_user }}"
       GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
-      GF_SERVER_HTTP_PORT: "{{ grafana_port }}"
+      GF_SERVER_HTTP_PORT: "{{ grafana_port | string }}"
     volumes:
       - "{{ grafana_data_dir }}:/var/lib/grafana"
   when: inventory_hostname in groups['head_nodes']
