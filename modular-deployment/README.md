@@ -6,7 +6,7 @@ This modular deployment system provides a checkpoint-based approach to deploying
 
 ## Architecture
 
-### Components
+### Components - muji
 
 1. **Checkpoint Playbooks** - Individual Ansible playbooks for each deployment phase
 2. **Validation Scripts** - Python scripts for status checking and health monitoring
